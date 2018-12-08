@@ -95,6 +95,68 @@ end
     end
   end
 
+# This function pulled in because of errors (extra trailing commas) in some linked agent display_names.
+# Hopefully this will be fixed in a future version. If so, this function
+  def handle_agents(linked_agents)
+
+    handle_primary_creator(linked_agents)
+    handle_other_creators(linked_agents)
+
+    subjects = linked_agents.select{|a| a['role'] == 'subject'}
+
+    subjects.each_with_index do |link, i|
+      next unless link["_resolved"]["publish"] || @include_unpublished
+
+      subject = link['_resolved']
+      name = subject['display_name']
+      # some link['_resolved']['display_name']['primary_name'] have unexpected trailing commas
+      # fix them
+      name['primary_name'].chomp!(",")
+      terms = link['terms']
+      ind2 = source_to_code(name['source'])
+
+      if link['relator']
+        relator = I18n.t("enumerations.linked_agent_archival_record_relators.#{link['relator']}")
+        relator_sf = ['4', relator]
+      end
+
+      case subject['agent_type']
+
+      when 'agent_corporate_entity'
+        code = '610'
+        ind1 = '2'
+        sfs = gather_agent_corporate_subfield_mappings(name, relator_sf, subject)
+
+      when 'agent_person'
+        ind1  = name['name_order'] == 'direct' ? '0' : '1'
+        code = '600'
+        sfs = gather_agent_person_subfield_mappings(name, relator_sf, subject)
+
+      when 'agent_family'
+        code = '600'
+        ind1 = '3'
+        sfs = gather_agent_family_subfield_mappings(name, relator_sf, subject)
+      end
+
+      terms.each do |t|
+        tag = case t['term_type']
+          when 'uniform_title'; 't'
+          when 'genre_form', 'style_period'; 'v'
+          when 'topical', 'cultural_context'; 'x'
+          when 'temporal'; 'y'
+          when 'geographic'; 'z'
+          end
+        sfs << [(tag), t['term']]
+      end
+
+      if ind2 == '7'
+        sfs << ['2', subject['names'].first['source']]
+      end
+
+      df(code, ind1, ind2, i).with_sfs(*sfs)
+    end
+  end
+
 #20160620LJD: Prefercite incorrectly mapped to 534; changed to 524
   def handle_notes(notes)
 
