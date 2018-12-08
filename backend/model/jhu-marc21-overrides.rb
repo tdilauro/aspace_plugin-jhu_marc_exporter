@@ -4,8 +4,8 @@ class MARCModel < ASpaceExport::ExportModel
   include JSONModel
 
 #20160621LJD: Leader - Change u at position 18 with i for ISBD per technical services.
-  def self.from_resource(obj)
-    marc = self.from_archival_object(obj)
+  def self.from_resource(obj, opts = {})
+    marc = self.from_archival_object(obj, opts)
     marc.apply_map(obj, @resource_map)
     marc.leader_string = "00000np$aa2200000 i 4500"
     marc.leader_string[7] = obj.level == 'item' ? 'm' : 'c'
@@ -31,7 +31,7 @@ def self.assemble_controlfield_string(obj)
 end
 
 #20160620LJD: 040 - Hard code JHE for 040 $a $e per technical services; add 'eng' to subfield b.
-  def handle_repo_code(repository)
+  def handle_repo_code(repository, langcode)
     repo = repository['_resolved']
     return false unless repo
 
@@ -40,7 +40,7 @@ end
                         ['b', repo['name']],
                         ['e', '3400 N. Charles St. Baltimore, MD 21218']
                       )
-    df('040', ' ', ' ').with_sfs(['a', 'JHE'], ['b', 'eng'], ['c', 'JHE'])
+    df('040', ' ', ' ').with_sfs(['a', 'JHE'], ['b', langcode], ['c', 'JHE'])
   end
 
 #20160621LJD: Change date from 245$f to 264$c per technical services.
