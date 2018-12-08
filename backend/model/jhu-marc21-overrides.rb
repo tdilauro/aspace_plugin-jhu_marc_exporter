@@ -79,6 +79,22 @@ end
     end
   end
 
+#20181208 Fix extents: 300$f should contain only the units for the value in 300$a.
+# The container summary can go into 300$. Order should be $a, $f, $b.
+  def handle_extents(extents)
+    extents.each do |ext|
+      e = ext['number']
+      t =  "#{I18n.t('enumerations.extent_extent_type.'+ext['extent_type'], :default => ext['extent_type'])}"
+      extent_subfields = [['a', e], ['f', t]]
+
+      if ext['container_summary']
+        extent_subfields << ['b', ext['container_summary']]
+      end
+
+      df!('300').with_sfs(*extent_subfields)
+    end
+  end
+
 #20160620LJD: Prefercite incorrectly mapped to 534; changed to 524
   def handle_notes(notes)
 
