@@ -45,29 +45,39 @@ end
   end
 
 #20160621LJD: Change date from 245$f to 264$c per technical services.
-def handle_dates(dates)
-  return false if dates.empty?
+  def handle_title(title, linked_agents, dates)
+    creator = linked_agents.find{|a| a['role'] == 'creator'}
+    date_codes = []
 
-  dates = [["single", "inclusive", "range"], ["bulk"]].map {|types|
-    dates.find {|date| types.include? date['date_type'] }
-  }.compact
+    # process dates first, if defined.
+    unless dates.empty?
+      dates = [["single", "inclusive", "range"], ["bulk"]].map {|types|
+        dates.find {|date| types.include? date['date_type'] }
+      }.compact
 
-  dates.each do |date|
-    code = 'c'
-    val = nil
-    if date['date_type'] == 'bulk'
-      val = nil
-    elsif date['expression']
-        val = date['expression']
-    elsif date['date_type'] == 'single'
-      val = date['begin']
-    else
-      val = "#{date['begin']} - #{date['end']}"
+      dates.each do |date|
+        code, val = nil
+        code = date['date_type'] == 'bulk' ? 'g' : 'f'
+        if date['expression']
+          val = date['expression']
+        elsif date['end']
+          val = "#{date['begin']} - #{date['end']}"
+        else
+          val = "#{date['begin']}"
+        end
+        date_codes.push([code, val])
+      end
     end
 
-    df('264', ' ', '0').with_sfs([code, val])
+    ind1 = creator.nil? ? "0" : "1"
+    df('245', ind1, '0').with_sfs(['a', title])
+
+    if date_codes.length > 0
+      # put dates in 264$c, but include only 245$f dates
+      date_codes_264 = date_codes.select{|date| date[0] == 'f'}.map{|date| ['c', date[1]]}
+      df('264', ' ', '0').with_sfs(*date_codes_264)
+    end
   end
-end
 
 #20160620LJD: Prefercite incorrectly mapped to 534; changed to 524
   def handle_notes(notes)
