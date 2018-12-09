@@ -17,6 +17,14 @@ class MARCModel < ASpaceExport::ExportModel
 
 #20160621LJD: 008 - Change 'xx' at positions 15-16 with 'mdu' for Maryland per technical services.
 def self.assemble_controlfield_string(obj)
+  repo = obj['repository']['_resolved']
+  country_code = repo_country_code(repo, default_code='xx')
+  puts
+  puts '--------------------------------------------------------------------'
+  puts ">>> country_code --> #{country_code}"
+  puts '--------------------------------------------------------------------'
+  puts
+
   date = obj.dates[0] || {}
   string = obj['system_mtime'].scan(/\d{2}/)[1..3].join('')
   string += obj.level == 'item' && date['date_type'] == 'single' ? 's' : 'i'
@@ -222,6 +230,42 @@ end
         df!(*marc_args[0...-1]).with_sfs([marc_args.last, *Array(text)])
       end
 
+    end
+  end
+
+
+  # private
+
+  def repo_country_code(repo, default_country='xx', default_region='xx')
+    if repo.has_key?('country') && !repo['country'].empty?
+      if repo['country'].downcase == "us" || repo['country'].downcase == "usa"
+        contact = repo_agent(repo)
+        country_code = repo_region_us(contact, default_region=default_region) + 'u'
+      else
+        country_code = repo['country']
+      end
+    else
+      country_code = default_country
+    end
+
+    country_code.downcase
+  end
+
+  def repo_region_us(agent, default_region='xx')
+    unless agent.nil?
+      region = agent.has_key?('region') ? agent['region'] : default_region
+      region = region.length == 2 ? region.downcase : default_region
+    else
+      region = default_region
+    end
+
+    region
+  end
+
+  def repo_agent(repo)
+    if repo.has_key?('agent_representation')  && !repo['agent_representation'].empty?
+      agent_id = JSONModel(:agent_corporate_entity).id_for(repo['agent_representation']['ref'])
+      AgentCorporateEntity.to_jsonmodel(agent_id)
     end
   end
 
