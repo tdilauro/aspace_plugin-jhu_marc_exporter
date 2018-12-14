@@ -153,6 +153,11 @@ end
         sfs << ['2', subject['names'].first['source']]
       end
 
+      # move $0 to the end of field, if present
+      # nb: as of 2.5.2, the $0 key is an integer 0, not a string ('0'), as the other keys are
+      sfs = sfs.reject{ |sf, _| sf == '0' || sf == 0 } +
+            sfs.select{ |sf, _| sf == '0' || sf == 0 }
+
       df(code, ind1, ind2, i).with_sfs(*sfs)
     end
   end
