@@ -70,7 +70,7 @@ end
     end
 
     ind1 = creator.nil? ? "0" : "1"
-    df('245', ind1, '0').with_sfs(['a', title])
+    df('245', ind1, '0').with_sfs(['a', title.chomp('.') + '.'])
 
     if date_codes.length > 0
       # put dates in 264$c, but include only 245$f dates
