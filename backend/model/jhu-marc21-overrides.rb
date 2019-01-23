@@ -188,8 +188,8 @@ end
                     ['500','a']
                   when 'accessrestrict'
                     ['506','a']
-                  when 'scopecontent'
-                    ['520', '2', ' ', 'a']
+                  # when 'scopecontent'
+                  #   ['520', '2', ' ', 'a']
                   when 'abstract'
                     ['520', '3', ' ', 'a']
                   when 'prefercite'
@@ -199,8 +199,8 @@ end
                     ['541', ind1, ' ', 'a']
                   when 'relatedmaterial'
                     ['544','n']
-                  when 'bioghist'
-                    ['545','a']
+                  # when 'bioghist'
+                  #   ['545','a']
                   when 'custodhist'
                     ind1 = note['publish'] ? '1' : '0'
                     ['561', ind1, ' ', 'a']
