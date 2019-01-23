@@ -225,8 +225,12 @@ end
 
       unless marc_args.nil?
         text = prefix ? "#{prefix}: " : ""
-        text += ASpaceExport::Utils.extract_note_text(note)
-        df!(*marc_args[0...-1]).with_sfs([marc_args.last, *Array(text)])
+        text += ASpaceExport::Utils.extract_note_text(note, @include_unpublished, true)
+
+        # only create a tag if there is text to show (e.g., marked published or exporting unpublished)
+        if text.length > 0
+          df!(*marc_args[0...-1]).with_sfs([marc_args.last, *Array(text)])
+        end
       end
 
     end
