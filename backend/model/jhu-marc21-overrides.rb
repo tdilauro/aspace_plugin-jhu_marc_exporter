@@ -3,7 +3,8 @@ class MARCModel < ASpaceExport::ExportModel
 
   include JSONModel
 
-#20160621LJD: Leader - Change u at position 18 with i for ISBD per technical services.
+# Set Encoding Level (ELvl, Leader byte 17) to 'I' (full-level input by OCLC participants)
+# # Set Descriptive Cataloging Form (Desc, Leader byte 18) to 'i' (IBSD punctuation)
   def self.from_resource(obj, opts = {})
     marc = self.from_archival_object(obj, opts)
     marc.apply_map(obj, @resource_map)
@@ -44,7 +45,7 @@ end
     df('049', ' ', ' ').with_sfs(['a', repo['org_code']])
   end
 
-#20160621LJD: Change date from 245$f to 264$c per technical services.
+# Move 245$f dates to 264$c per technical services.
   def handle_title(title, linked_agents, dates)
     creator = linked_agents.find{|a| a['role'] == 'creator'}
     date_codes = []
@@ -79,8 +80,8 @@ end
     end
   end
 
-#20181208 Fix extents: 300$f should contain only the units for the value in 300$a.
-# The container summary can go into 300$. Order should be $a, $f, $b.
+# Fix extents: 300$f should contain only the units for the value in 300$a.
+# The container summary can go into 300$b. Order should be $a, $f, $b.
   def handle_extents(extents)
     extents.each do |ext|
       e = ext['number']
