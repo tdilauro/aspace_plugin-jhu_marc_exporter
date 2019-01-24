@@ -95,6 +95,57 @@ end
     end
   end
 
+# This method pulled in to add authority ID as 6xx$0
+  def handle_subjects(subjects)
+    subjects.each do |link|
+      subject = link['_resolved']
+      term, *terms = subject['terms']
+      code, ind2 =  case term['term_type']
+                    when 'uniform_title'
+                      ['630', source_to_code(subject['source'])]
+                    when 'temporal'
+                      ['648', source_to_code(subject['source'])]
+                    when 'topical'
+                      ['650', source_to_code(subject['source'])]
+                    when 'geographic', 'cultural_context'
+                      ['651', source_to_code(subject['source'])]
+                    when 'genre_form', 'style_period'
+                      ['655', source_to_code(subject['source'])]
+                    when 'occupation'
+                      ['656', '7']
+                    when 'function'
+                      ['656', '7']
+                    else
+                      ['650', source_to_code(subject['source'])]
+                    end
+      sfs = [['a', term['term']]]
+
+      terms.each do |t|
+        tag = case t['term_type']
+              when 'uniform_title'; 't'
+              when 'genre_form', 'style_period'; 'v'
+              when 'topical', 'cultural_context'; 'x'
+              when 'temporal'; 'y'
+              when 'geographic'; 'z'
+              end
+        sfs << [tag, t['term']]
+      end
+
+      if ind2 == '7'
+        sfs << ['2', subject['source']]
+      end
+
+      # add authority ID as subject 6xx $0
+      authority_id = subject['authority_id']
+      subfield_0 = authority_id ? [0, authority_id] : nil
+      sfs.push(subfield_0) unless subfield_0.nil?
+
+      ind1 = code == '630' ? "0" : " "
+      df!(code, ind1, ind2).with_sfs(*sfs)
+    end
+  end
+
+
 # This function pulled in because of errors (extra trailing commas) in some linked agent display_names.
 # Hopefully this will be fixed in a future version. If so, this function
   def handle_agents(linked_agents)
