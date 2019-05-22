@@ -3,11 +3,12 @@ class MARCModel < ASpaceExport::ExportModel
 
   include JSONModel
 
-#20160621LJD: Leader - Change u at position 18 with i for ISBD per technical services.
-  def self.from_resource(obj)
-    marc = self.from_archival_object(obj)
+# Set Encoding Level (ELvl, Leader byte 17) to 'I' (full-level input by OCLC participants)
+# # Set Descriptive Cataloging Form (Desc, Leader byte 18) to 'i' (IBSD punctuation)
+  def self.from_resource(obj, opts = {})
+    marc = self.from_archival_object(obj, opts)
     marc.apply_map(obj, @resource_map)
-    marc.leader_string = "00000np$aa2200000 i 4500"
+    marc.leader_string = "00000np$aa2200000Ii 4500"
     marc.leader_string[7] = obj.level == 'item' ? 'm' : 'c'
 
     marc.controlfield_string = assemble_controlfield_string(obj)
@@ -31,7 +32,7 @@ def self.assemble_controlfield_string(obj)
 end
 
 #20160620LJD: 040 - Hard code JHE for 040 $a $e per technical services; add 'eng' to subfield b.
-  def handle_repo_code(repository)
+  def handle_repo_code(repository, langcode)
     repo = repository['_resolved']
     return false unless repo
 
@@ -40,33 +41,178 @@ end
                         ['b', repo['name']],
                         ['e', '3400 N. Charles St. Baltimore, MD 21218']
                       )
-    df('040', ' ', ' ').with_sfs(['a', 'JHE'], ['b', 'eng'], ['c', 'JHE'])
+    df('040', ' ', ' ').with_sfs(['a', 'JHE'], ['b', langcode], ['c', 'JHE'])
+    df('049', ' ', ' ').with_sfs(['a', repo['org_code']])
   end
 
-#20160621LJD: Change date from 245$f to 264$c per technical services.
-def handle_dates(dates)
-  return false if dates.empty?
+# Move 245$f dates to 264$c per technical services.
+  def handle_title(title, linked_agents, dates)
+    creator = linked_agents.find{|a| a['role'] == 'creator'}
+    date_codes = []
 
-  dates = [["single", "inclusive", "range"], ["bulk"]].map {|types|
-    dates.find {|date| types.include? date['date_type'] }
-  }.compact
+    # process dates first, if defined.
+    unless dates.empty?
+      dates = [["single", "inclusive", "range"], ["bulk"]].map {|types|
+        dates.find {|date| types.include? date['date_type'] }
+      }.compact
 
-  dates.each do |date|
-    code = 'c'
-    val = nil
-    if date['date_type'] == 'bulk'
-      val = nil
-    elsif date['expression']
-        val = date['expression']
-    elsif date['date_type'] == 'single'
-      val = date['begin']
-    else
-      val = "#{date['begin']} - #{date['end']}"
+      dates.each do |date|
+        code, val = nil
+        code = date['date_type'] == 'bulk' ? 'g' : 'f'
+        if date['expression']
+          val = date['expression']
+        elsif date['end']
+          val = "#{date['begin']} - #{date['end']}"
+        else
+          val = "#{date['begin']}"
+        end
+        date_codes.push([code, val])
+      end
     end
 
-    df('264', ' ', '0').with_sfs([code, val])
+    ind1 = creator.nil? ? "0" : "1"
+    df('245', ind1, '0').with_sfs(['a', title.chomp('.') + '.'])
+
+    if date_codes.length > 0
+      # put dates in 264$c, but include only 245$f dates
+      date_codes_264 = date_codes.select{|date| date[0] == 'f'}.map{|date| ['c', date[1]]}
+      df('264', ' ', '0').with_sfs(*date_codes_264)
+    end
   end
-end
+
+# Fix extents: 300$f should contain only the units for the value in 300$a.
+# The container summary can go into 300$b. Order should be $a, $f, $b.
+  def handle_extents(extents)
+    extents.each do |ext|
+      e = ext['number']
+      t =  "#{I18n.t('enumerations.extent_extent_type.'+ext['extent_type'], :default => ext['extent_type'])}"
+      extent_subfields = [['a', e], ['f', t]]
+
+      if ext['container_summary']
+        extent_subfields << ['b', ext['container_summary']]
+      end
+
+      df!('300').with_sfs(*extent_subfields)
+    end
+  end
+
+# This method pulled in to add authority ID as 6xx$0
+  def handle_subjects(subjects)
+    subjects.each do |link|
+      subject = link['_resolved']
+      term, *terms = subject['terms']
+      code, ind2 =  case term['term_type']
+                    when 'uniform_title'
+                      ['630', source_to_code(subject['source'])]
+                    when 'temporal'
+                      ['648', source_to_code(subject['source'])]
+                    when 'topical'
+                      ['650', source_to_code(subject['source'])]
+                    when 'geographic', 'cultural_context'
+                      ['651', source_to_code(subject['source'])]
+                    when 'genre_form', 'style_period'
+                      ['655', source_to_code(subject['source'])]
+                    when 'occupation'
+                      ['656', '7']
+                    when 'function'
+                      ['656', '7']
+                    else
+                      ['650', source_to_code(subject['source'])]
+                    end
+      sfs = [['a', term['term']]]
+
+      terms.each do |t|
+        tag = case t['term_type']
+              when 'uniform_title'; 't'
+              when 'genre_form', 'style_period'; 'v'
+              when 'topical', 'cultural_context'; 'x'
+              when 'temporal'; 'y'
+              when 'geographic'; 'z'
+              end
+        sfs << [tag, t['term']]
+      end
+
+      if ind2 == '7'
+        sfs << ['2', subject['source']]
+      end
+
+      # add authority ID as subject 6xx $0
+      authority_id = subject['authority_id']
+      subfield_0 = authority_id ? [0, authority_id] : nil
+      sfs.push(subfield_0) unless subfield_0.nil?
+
+      ind1 = code == '630' ? "0" : " "
+      df!(code, ind1, ind2).with_sfs(*sfs)
+    end
+  end
+
+
+# This function pulled in because of errors (extra trailing commas) in some linked agent display_names.
+# Hopefully this will be fixed in a future version. If so, this function
+  def handle_agents(linked_agents)
+
+    handle_primary_creator(linked_agents)
+    handle_other_creators(linked_agents)
+
+    subjects = linked_agents.select{|a| a['role'] == 'subject'}
+
+    subjects.each_with_index do |link, i|
+      next unless link["_resolved"]["publish"] || @include_unpublished
+
+      subject = link['_resolved']
+      name = subject['display_name']
+      # some link['_resolved']['display_name']['primary_name'] have unexpected trailing commas
+      # fix them
+      name['primary_name'].chomp!(",")
+      terms = link['terms']
+      ind2 = source_to_code(name['source'])
+
+      if link['relator']
+        relator = I18n.t("enumerations.linked_agent_archival_record_relators.#{link['relator']}")
+        relator_sf = ['4', relator]
+      end
+
+      case subject['agent_type']
+
+      when 'agent_corporate_entity'
+        code = '610'
+        ind1 = '2'
+        sfs = gather_agent_corporate_subfield_mappings(name, relator_sf, subject)
+
+      when 'agent_person'
+        ind1  = name['name_order'] == 'direct' ? '0' : '1'
+        code = '600'
+        sfs = gather_agent_person_subfield_mappings(name, relator_sf, subject)
+
+      when 'agent_family'
+        code = '600'
+        ind1 = '3'
+        sfs = gather_agent_family_subfield_mappings(name, relator_sf, subject)
+      end
+
+      terms.each do |t|
+        tag = case t['term_type']
+          when 'uniform_title'; 't'
+          when 'genre_form', 'style_period'; 'v'
+          when 'topical', 'cultural_context'; 'x'
+          when 'temporal'; 'y'
+          when 'geographic'; 'z'
+          end
+        sfs << [(tag), t['term']]
+      end
+
+      if ind2 == '7'
+        sfs << ['2', subject['names'].first['source']]
+      end
+
+      # move $0 to the end of field, if present
+      # nb: as of 2.5.2, the $0 key is an integer 0, not a string ('0'), as the other keys are
+      sfs = sfs.reject{ |sf, _| sf == '0' || sf == 0 } +
+            sfs.select{ |sf, _| sf == '0' || sf == 0 }
+
+      df(code, ind1, ind2, i).with_sfs(*sfs)
+    end
+  end
 
 #20160620LJD: Prefercite incorrectly mapped to 534; changed to 524
   def handle_notes(notes)
@@ -94,8 +240,8 @@ end
                     ['500','a']
                   when 'accessrestrict'
                     ['506','a']
-                  when 'scopecontent'
-                    ['520', '2', ' ', 'a']
+                  # when 'scopecontent'
+                  #   ['520', '2', ' ', 'a']
                   when 'abstract'
                     ['520', '3', ' ', 'a']
                   when 'prefercite'
@@ -104,9 +250,9 @@ end
                     ind1 = note['publish'] ? '1' : '0'
                     ['541', ind1, ' ', 'a']
                   when 'relatedmaterial'
-                    ['544','a']
-                  when 'bioghist'
-                    ['545','a']
+                    ['544','n']
+                  # when 'bioghist'
+                  #   ['545','a']
                   when 'custodhist'
                     ind1 = note['publish'] ? '1' : '0'
                     ['561', ind1, ' ', 'a']
@@ -123,14 +269,20 @@ end
                     ['540', 'a']
                   when 'langmaterial'
                     ['546', 'a']
+                  # when 'otherfindaid'
+                  #   ['555', '0', ' ', 'a']
                   else
                     nil
                   end
 
       unless marc_args.nil?
         text = prefix ? "#{prefix}: " : ""
-        text += ASpaceExport::Utils.extract_note_text(note)
-        df!(*marc_args[0...-1]).with_sfs([marc_args.last, *Array(text)])
+        text += ASpaceExport::Utils.extract_note_text(note, @include_unpublished, true)
+
+        # only create a tag if there is text to show (e.g., marked published or exporting unpublished)
+        if text.length > 0
+          df!(*marc_args[0...-1]).with_sfs([marc_args.last, *Array(text)])
+        end
       end
 
     end
